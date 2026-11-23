@@ -94,22 +94,24 @@ func (ts *TestScript) cmdChmod(neg bool, args []string) {
 
 // cmp compares two files.
 func (ts *TestScript) cmdCmp(neg bool, args []string) {
-	if len(args) != 2 {
-		ts.Fatalf("usage: cmp file1 file2")
-	}
-
-	ts.doCmdCmp(neg, args, false)
+	ts.doCmdCmp(neg, args, "cmp")
 }
 
 // cmpenv compares two files with environment variable substitution.
 func (ts *TestScript) cmdCmpenv(neg bool, args []string) {
-	if len(args) != 2 {
-		ts.Fatalf("usage: cmpenv file1 file2")
-	}
-	ts.doCmdCmp(neg, args, true)
+	ts.doCmdCmp(neg, args, "cmpenv")
 }
 
-func (ts *TestScript) doCmdCmp(neg bool, args []string, env bool) {
+func (ts *TestScript) doCmdCmp(neg bool, args []string, funcName string) {
+	textFlag := false
+	if args[0] == "-text" {
+		textFlag = true
+		args = args[1:]
+	}
+	if len(args) != 2 {
+		ts.Fatalf("usage: %s [-text] file1 file2", funcName)
+	}
+
 	name1, name2 := args[0], args[1]
 	if name1 == name2 {
 		// It's surprisingly easy to do e.g. `cmp foo.go foo.go` rather than
@@ -117,12 +119,18 @@ func (ts *TestScript) doCmdCmp(neg bool, args []string, env bool) {
 		ts.Fatalf("cmp: cannot compare a file against itself")
 	}
 	text1 := ts.ReadFile(name1)
+	if textFlag {
+		text1 = strings.ReplaceAll(text1, "\r\n", "\n")
+	}
 
 	absName2 := ts.MkAbs(name2)
 	data, err := os.ReadFile(absName2)
 	ts.Check(err)
 	text2 := string(data)
-	if env {
+	if textFlag {
+		text2 = strings.ReplaceAll(text2, "\r\n", "\n")
+	}
+	if funcName == "cmpenv" {
 		text2 = ts.expand(text2)
 	}
 	eq := text1 == text2
@@ -135,7 +143,7 @@ func (ts *TestScript) doCmdCmp(neg bool, args []string, env bool) {
 	if eq {
 		return // they are equal, as expected
 	}
-	if ts.params.UpdateScripts && !env {
+	if ts.params.UpdateScripts && funcName != "cmpenv" {
 		if scriptFile, ok := ts.scriptFiles[absName2]; ok {
 			ts.scriptUpdates[scriptFile] = text1
 			return
